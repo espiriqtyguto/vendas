@@ -1,0 +1,1238 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sistema de Vendas e Comissões</title>
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Font Awesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" integrity="sha512-SnH5WK+bZxgPHs44uWIX+LLJAJ9/2PkPKZ5QiAj6Ta86w+fsb2TkcmfRyVX3pBnMFcV7oQPJkl9QevSCWr3W6A==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    /* Compact Table Styles on Screen */
+    .report-dense-table th {
+      padding: 5px 8px !important;
+      font-size: 11px !important;
+      line-height: 1.2 !important;
+    }
+    .report-dense-table td {
+      padding: 4px 8px !important;
+      font-size: 11.5px !important;
+      line-height: 1.25 !important;
+    }
+
+    /* Print Setup Optimized for Clean Multi-page A4 Pagination */
+    @page {
+      size: A4 portrait;
+      margin: 12mm 10mm;
+    }
+
+    @media print {
+      /* Reset layout constraints preventing natural pagination */
+      html, body {
+        background: #ffffff !important;
+        color: #000000 !important;
+        height: auto !important;
+        min-height: 100% !important;
+        overflow: visible !important;
+        font-size: 11px !important;
+        margin: 0 !important;
+        padding: 0 !important;
+      }
+
+      /* Hide entire web UI in print mode */
+      header,
+      main,
+      #massModal,
+      #restoreModal,
+      #resetMonthModal,
+      #toastNotification,
+      .no-print {
+        display: none !important;
+      }
+
+      /* Modals convert from fixed overlays to natural block elements */
+      #reportModal,
+      #operationalReportModal {
+        display: none !important;
+        position: static !important;
+        width: 100% !important;
+        height: auto !important;
+        overflow: visible !important;
+        background: transparent !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        box-shadow: none !important;
+        border: none !important;
+      }
+
+      /* When active modal has no .hidden class, render it clearly in page flow */
+      #reportModal:not(.hidden),
+      #operationalReportModal:not(.hidden) {
+        display: block !important;
+      }
+
+      #reportModalCard,
+      #operationalReportModalCard {
+        position: static !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        box-shadow: none !important;
+        border: none !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        background: transparent !important;
+      }
+
+      /* Remove scroll boxes and heights from table wrappers */
+      .report-scroll-container {
+        max-height: none !important;
+        overflow: visible !important;
+        border: none !important;
+      }
+
+      /* Print Table Rules: repeat headers on every sheet and prevent mid-row cuts */
+      table.report-dense-table {
+        width: 100% !important;
+        border-collapse: collapse !important;
+      }
+
+      table.report-dense-table thead {
+        display: table-header-group !important; /* Re-prints thead on each page */
+      }
+
+      table.report-dense-table tbody {
+        display: table-row-group !important;
+      }
+
+      table.report-dense-table tfoot {
+        display: table-footer-group !important;
+      }
+
+      table.report-dense-table tr {
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+      }
+
+      table.report-dense-table th {
+        background-color: #f1f5f9 !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        border-bottom: 1.5px solid #cbd5e1 !important;
+        color: #0f172a !important;
+      }
+
+      table.report-dense-table td {
+        border-bottom: 1px solid #e2e8f0 !important;
+        color: #1e293b !important;
+      }
+
+      /* Keep summary footer together without erratic page slicing */
+      .page-break-inside-avoid {
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+        margin-top: 12px !important;
+      }
+    }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 antialiased font-sans min-h-screen flex flex-col selection:bg-indigo-100 selection:text-indigo-900 text-sm">
+
+  <!-- Toast Notification -->
+  <div id="toastNotification" class="fixed top-4 right-4 z-50 transform transition-all duration-200 translate-y-[-140%] opacity-0 pointer-events-none flex items-center gap-2.5 px-3.5 py-2.5 rounded-lg shadow-lg border text-xs font-medium">
+    <i id="toastIcon" class="fa-solid fa-circle-info text-sm flex-shrink-0"></i>
+    <span id="toastMessage"></span>
+  </div>
+
+  <!-- Header -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-40 no-print">
+    <div class="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
+      <div class="flex items-center space-x-2.5">
+        <div class="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white shadow-xs">
+          <i class="fa-solid fa-clipboard-list text-sm"></i>
+        </div>
+        <div>
+          <h1 class="text-sm font-bold text-slate-900 leading-tight">Painel de Vendas e Comissões</h1>
+          <p class="text-[11px] text-slate-500 flex items-center gap-1.5">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            Armazenamento mensal seguro ativo
+          </p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <!-- Mass Import Button -->
+        <button id="btnOpenMassModal" class="px-2.5 py-1.5 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg border border-slate-200 transition-colors flex items-center gap-1.5" title="Importar várias vendas de uma vez">
+          <i class="fa-solid fa-cloud-arrow-up text-indigo-600 text-xs"></i>
+          <span>Importar em Massa</span>
+        </button>
+
+        <!-- Dropdown Backup -->
+        <div class="relative inline-block text-left" id="backupDropdownWrapper">
+          <button id="btnToggleBackupMenu" class="px-2.5 py-1.5 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg border border-slate-200 transition-colors flex items-center gap-1.5">
+            <i class="fa-solid fa-shield-halved text-emerald-600 text-xs"></i>
+            <span>Backup & Arquivos</span>
+            <i class="fa-solid fa-chevron-down text-[10px] text-slate-400"></i>
+          </button>
+
+          <div id="backupDropdownMenu" class="hidden absolute right-0 mt-1 w-56 rounded-lg bg-white border border-slate-200 shadow-lg py-1 z-50">
+            <div class="px-3 py-1.5 border-b border-slate-100 text-[10px] uppercase font-semibold text-slate-400">
+              Segurança do Histórico
+            </div>
+            <button id="btnDownloadBackupJSON" class="w-full text-left px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2">
+              <i class="fa-solid fa-file-arrow-down text-emerald-600 w-4"></i>
+              <span>Baixar Backup Completo (.JSON)</span>
+            </button>
+            <button id="btnExportCSV" class="w-full text-left px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2">
+              <i class="fa-solid fa-file-csv text-blue-600 w-4"></i>
+              <span>Exportar para Planilha (.CSV)</span>
+            </button>
+            <div class="border-t border-slate-100 my-1"></div>
+            <label class="w-full text-left px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer">
+              <i class="fa-solid fa-file-arrow-up text-indigo-600 w-4"></i>
+              <span>Restaurar Backup (.JSON)</span>
+              <input type="file" id="restoreFileInput" accept=".json" class="hidden">
+            </label>
+            <div class="border-t border-slate-100 my-1"></div>
+            <button id="btnResetMonth" class="w-full text-left px-3 py-2 text-xs text-rose-600 hover:bg-rose-50 flex items-center gap-2">
+              <i class="fa-solid fa-calendar-xmark text-rose-500 w-4"></i>
+              <span>Iniciar Novo Mês (Limpar)</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 py-5 flex-1 w-full space-y-4">
+
+    <!-- Compact Stat Bar -->
+    <div class="grid grid-cols-2 sm:grid-cols-5 gap-2.5 no-print">
+      <div class="bg-white p-3 rounded-xl border border-slate-200">
+        <span class="text-[11px] text-slate-500 font-medium block">Qtd. Vendas</span>
+        <span id="statTotalCount" class="text-lg font-bold text-slate-900 font-mono">0</span>
+      </div>
+      <div class="bg-white p-3 rounded-xl border border-slate-200">
+        <span class="text-[11px] text-slate-500 font-medium block">Soma 1ª Mensalidade</span>
+        <span id="statTotalFees" class="text-lg font-bold text-slate-900 font-mono">R$ 0,00</span>
+      </div>
+      <div class="bg-white p-3 rounded-xl border border-slate-200">
+        <span class="text-[11px] text-slate-500 font-medium block">Comissão Base</span>
+        <span id="statRawCommission" class="text-lg font-bold text-slate-900 font-mono">R$ 0,00</span>
+      </div>
+      <div class="bg-white p-3 rounded-xl border border-slate-200">
+        <span class="text-[11px] text-slate-500 font-medium block">Bônus Conquistado</span>
+        <span id="statBonusAmount" class="text-lg font-bold text-emerald-600 font-mono">R$ 0,00</span>
+      </div>
+      <div class="bg-indigo-50 border border-indigo-200 p-3 rounded-xl col-span-2 sm:col-span-1">
+        <span class="text-[11px] text-indigo-700 font-semibold block">Total a Receber</span>
+        <span id="statTotalPayout" class="text-lg font-bold text-indigo-900 font-mono">R$ 0,00</span>
+      </div>
+    </div>
+
+    <!-- Active Tier Banner with Progress Track -->
+    <div class="bg-white rounded-xl border border-slate-200 p-3 no-print space-y-2">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-xs">
+        <div class="flex items-center gap-2">
+          <span class="font-semibold text-slate-700">Status da Bonificação:</span>
+          <span id="statBonusLabel" class="text-slate-700 bg-slate-100 px-2 py-0.5 rounded font-medium">De 1 a 20 vendas (Sem bônus)</span>
+        </div>
+        <span id="statNextGoal" class="text-slate-500 text-[11px] font-medium"></span>
+      </div>
+
+      <!-- Visual Progress Bar -->
+      <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+        <div id="bonusProgressBar" class="bg-indigo-600 h-full rounded-full transition-all duration-300" style="width: 0%;"></div>
+      </div>
+    </div>
+
+    <!-- Main Workspace -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+
+      <!-- Form: Single Entry -->
+      <section class="lg:col-span-4 bg-white rounded-xl border border-slate-200 p-4 no-print space-y-3">
+        <div class="pb-2 border-b border-slate-100 flex items-center justify-between">
+          <h2 class="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+            <i class="fa-solid fa-circle-plus text-indigo-600 text-xs"></i>
+            Nova Venda
+          </h2>
+          <span class="text-[10px] text-slate-400">Todos obrigatórios</span>
+        </div>
+
+        <form id="saleForm" class="space-y-2.5">
+          <div>
+            <label for="inputContract" class="block text-[11px] font-semibold text-slate-600 mb-0.5">Nº do Contrato</label>
+            <input type="text" id="inputContract" required placeholder="Ex: CTR-1001"
+              class="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600">
+          </div>
+
+          <div>
+            <label for="inputDate" class="block text-[11px] font-semibold text-slate-600 mb-0.5">Data da Venda</label>
+            <input type="date" id="inputDate" required
+              class="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600">
+          </div>
+
+          <div>
+            <label for="inputClient" class="block text-[11px] font-semibold text-slate-600 mb-0.5">Nome do Cliente</label>
+            <input type="text" id="inputClient" required placeholder="Ex: Roberto Carlos"
+              class="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600">
+          </div>
+
+          <div>
+            <label for="inputPlan" class="block text-[11px] font-semibold text-slate-600 mb-0.5">Tipo de Plano</label>
+            <select id="inputPlan" required
+              class="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:border-indigo-600 bg-white">
+              <option value="Nacional">Nacional</option>
+              <option value="Regional">Regional</option>
+            </select>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label for="inputFee" class="block text-[11px] font-semibold text-slate-600 mb-0.5">1ª Mensalidade (R$)</label>
+              <input type="number" step="0.01" min="0" id="inputFee" required placeholder="0,00"
+                class="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600">
+            </div>
+            <div>
+              <label for="inputCommission" class="block text-[11px] font-semibold text-slate-600 mb-0.5">Comissão (R$)</label>
+              <input type="number" step="0.01" min="0" id="inputCommission" required placeholder="0,00"
+                class="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600">
+            </div>
+          </div>
+
+          <button type="submit" class="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg text-xs transition-colors flex items-center justify-center gap-1.5 mt-2">
+            <i class="fa-solid fa-plus text-xs"></i>
+            Adicionar Venda
+          </button>
+        </form>
+      </section>
+
+      <!-- Table Section -->
+      <section class="lg:col-span-8 space-y-3">
+        <div class="bg-white rounded-xl border border-slate-200 p-2.5 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 no-print">
+          <div class="relative w-full max-w-xs">
+            <input type="text" id="searchInput" placeholder="Filtrar por contrato ou cliente..."
+              class="w-full pl-7 pr-2.5 py-1.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:border-indigo-600">
+            <i class="fa-solid fa-magnifying-glass text-slate-400 text-xs absolute left-2 top-2.5"></i>
+          </div>
+
+          <div class="flex items-center gap-2 self-end sm:self-auto">
+            <!-- Relatório Operacional (Somente Vendas) -->
+            <button id="btnOpenOperationalReport" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-lg border border-slate-300 transition-colors flex items-center gap-1.5 shadow-2xs" title="Exibir apenas a relação de vendas para conferência, sem valores de comissões">
+              <i class="fa-solid fa-table-list text-slate-600 text-xs"></i>
+              <span>Relatório Operacional (Vendas)</span>
+            </button>
+
+            <!-- Relatório Financeiro Completo com Totais e Bônus -->
+            <button id="btnOpenReport" class="px-3 py-1.5 bg-slate-900 hover:bg-black text-white text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 shadow-xs" title="Exibir relatório com detalhamento de comissões e totais">
+              <i class="fa-solid fa-file-invoice-dollar text-emerald-400 text-xs"></i>
+              <span>Relatório Financeiro</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs">
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs">
+              <thead class="bg-slate-50 text-[11px] text-slate-500 font-semibold uppercase tracking-wider border-b border-slate-200">
+                <tr>
+                  <th class="py-2 px-3">Contrato</th>
+                  <th class="py-2 px-3">Data</th>
+                  <th class="py-2 px-3">Cliente</th>
+                  <th class="py-2 px-3">Plano</th>
+                  <th class="py-2 px-3 text-right">Mensalidade</th>
+                  <th class="py-2 px-3 text-right">Comissão</th>
+                  <th class="py-2 px-2 text-center no-print">Ação</th>
+                </tr>
+              </thead>
+              <tbody id="salesTableBody" class="divide-y divide-slate-100">
+                <!-- Javascript populated -->
+              </tbody>
+            </table>
+          </div>
+
+          <div id="tableEmptyState" class="py-10 text-center text-slate-400 text-xs hidden">
+            Nenhuma venda registrada até o momento.
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- MODAL: RELATÓRIO FINANCEIRO (PAGINAÇÃO COMPLETA EM MÚLTIPLAS FOLHAS) -->
+  <div id="reportModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 hidden flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+    <div id="reportModalCard" class="bg-white rounded-xl max-w-4xl w-full p-4 sm:p-6 shadow-xl border border-slate-300 relative my-4 text-slate-800">
+
+      <!-- Header Minimalista -->
+      <div class="flex items-center justify-between pb-3 border-b border-slate-200">
+        <div>
+          <h2 class="text-sm sm:text-base font-bold text-slate-900 uppercase tracking-tight">Relatório de Vendas e Comissões</h2>
+          <p class="text-[11px] text-slate-500" id="repIssuedDate">Emitido em --/--/----</p>
+        </div>
+
+        <div class="flex items-center gap-1.5 no-print">
+          <button id="btnPrintReport" class="px-2.5 py-1 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-md transition-colors flex items-center gap-1">
+            <i class="fa-solid fa-print text-xs"></i>
+            <span>Imprimir</span>
+          </button>
+          <button id="btnCloseReport" class="p-1.5 text-slate-400 hover:text-slate-600 rounded-md hover:bg-slate-100 transition-colors" title="Fechar">
+            <i class="fa-solid fa-xmark text-sm"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Tabela Densa e Compacta sem cortes em impressão -->
+      <div class="my-3 border border-slate-200 rounded overflow-hidden report-scroll-container">
+        <div class="max-h-[55vh] overflow-y-auto report-scroll-container">
+          <table class="w-full text-left report-dense-table border-collapse">
+            <thead class="bg-slate-100 border-b border-slate-200 text-slate-700 font-semibold uppercase sticky top-0 bg-slate-100">
+              <tr>
+                <th class="w-8 text-center text-slate-400 font-mono">#</th>
+                <th>Contrato</th>
+                <th>Data</th>
+                <th>Cliente</th>
+                <th>Plano</th>
+                <th class="text-right">1ª Mensalidade</th>
+                <th class="text-right">Comissão</th>
+              </tr>
+            </thead>
+            <tbody id="repTableBody" class="divide-y divide-slate-200">
+              <!-- Populated dynamically -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Resumo Financeiro / Valores Finais -->
+      <div class="page-break-inside-avoid bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs">
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 pb-2.5 border-b border-slate-200">
+          <div>
+            <span class="text-[10px] uppercase font-bold text-slate-500 block">Total de Vendas</span>
+            <span id="repSummaryCount" class="font-semibold text-slate-900 font-mono text-xs">0 vendas</span>
+          </div>
+          <div>
+            <span class="text-[10px] uppercase font-bold text-slate-500 block">Soma Mensalidades</span>
+            <span id="repSummaryFees" class="font-semibold text-slate-900 font-mono text-xs">R$ 0,00</span>
+          </div>
+          <div>
+            <span class="text-[10px] uppercase font-bold text-slate-500 block">Soma Comissões</span>
+            <span id="repSummaryCommissions" class="font-semibold text-slate-900 font-mono text-xs">R$ 0,00</span>
+          </div>
+          <div>
+            <span class="text-[10px] uppercase font-bold text-slate-500 block">Bônus Atingido</span>
+            <span id="repSummaryBonus" class="font-semibold text-emerald-700 font-mono text-xs">+ R$ 0,00</span>
+          </div>
+        </div>
+
+        <div class="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+          <span class="text-[11px] text-slate-500 font-medium" id="repSummaryBonusDesc">
+            Faixa aplicada: De 1 a 20 vendas (sem bônus)
+          </span>
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-bold text-slate-700 uppercase">Total a Receber:</span>
+            <span id="repSummaryGrandTotal" class="text-sm sm:text-base font-bold text-indigo-900 font-mono bg-white px-2 py-0.5 rounded border border-slate-200">
+              R$ 0,00
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-3 pt-2 border-t border-slate-200 flex justify-end no-print">
+        <button id="btnCloseReportSecondary" class="px-3 py-1.5 text-xs text-slate-600 hover:text-slate-800 bg-slate-100 rounded border border-slate-200">
+          Fechar
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- MODAL: RELATÓRIO OPERACIONAL (PAGINAÇÃO COMPLETA EM MÚLTIPLAS FOLHAS) -->
+  <div id="operationalReportModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 hidden flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+    <div id="operationalReportModalCard" class="bg-white rounded-xl max-w-4xl w-full p-4 sm:p-6 shadow-xl border border-slate-300 relative my-4 text-slate-800">
+
+      <!-- Header Operacional Limpo -->
+      <div class="flex items-center justify-between pb-3 border-b border-slate-200">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="px-2 py-0.5 text-[10px] font-semibold tracking-wider uppercase rounded bg-slate-100 text-slate-600 border border-slate-200">Operacional</span>
+            <h2 class="text-sm sm:text-base font-bold text-slate-900 uppercase tracking-tight">Relação de Vendas e Contratos</h2>
+          </div>
+          <p class="text-[11px] text-slate-500 mt-0.5" id="opIssuedDate">Emitido em --/--/----</p>
+        </div>
+
+        <div class="flex items-center gap-1.5 no-print">
+          <button id="btnPrintOperationalReport" class="px-2.5 py-1 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-md transition-colors flex items-center gap-1">
+            <i class="fa-solid fa-print text-xs"></i>
+            <span>Imprimir</span>
+          </button>
+          <button id="btnCloseOperationalReport" class="p-1.5 text-slate-400 hover:text-slate-600 rounded-md hover:bg-slate-100 transition-colors" title="Fechar">
+            <i class="fa-solid fa-xmark text-sm"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Tabela Operacional Densa sem cortes em impressão -->
+      <div class="my-3 border border-slate-200 rounded overflow-hidden report-scroll-container">
+        <div class="max-h-[60vh] overflow-y-auto report-scroll-container">
+          <table class="w-full text-left report-dense-table border-collapse">
+            <thead class="bg-slate-100 border-b border-slate-200 text-slate-700 font-semibold uppercase sticky top-0 bg-slate-100">
+              <tr>
+                <th class="w-10 text-center text-slate-400 font-mono">#</th>
+                <th>Nº Contrato</th>
+                <th>Data Venda</th>
+                <th>Cliente</th>
+                <th>Tipo de Plano</th>
+                <th class="text-right">1ª Mensalidade</th>
+              </tr>
+            </thead>
+            <tbody id="opTableBody" class="divide-y divide-slate-200">
+              <!-- Populated dynamically without commissions or bonus calculations -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Rodapé Operacional Simples -->
+      <div class="page-break-inside-avoid bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div class="flex items-center gap-4">
+          <div>
+            <span class="text-[10px] uppercase font-bold text-slate-500 block">Total de Contratos</span>
+            <span id="opSummaryCount" class="font-semibold text-slate-900 font-mono text-xs">0 contratos</span>
+          </div>
+          <div>
+            <span class="text-[10px] uppercase font-bold text-slate-500 block">Planos Nacionais</span>
+            <span id="opSummaryNac" class="font-semibold text-blue-700 font-mono text-xs">0</span>
+          </div>
+          <div>
+            <span class="text-[10px] uppercase font-bold text-slate-500 block">Planos Regionais</span>
+            <span id="opSummaryReg" class="font-semibold text-emerald-700 font-mono text-xs">0</span>
+          </div>
+        </div>
+
+        <div class="text-[11px] text-slate-400 italic">
+          Documento para auditoria e conferência cadastral interna.
+        </div>
+      </div>
+
+      <div class="mt-3 pt-2 border-t border-slate-200 flex justify-end no-print">
+        <button id="btnCloseOperationalReportSecondary" class="px-3 py-1.5 text-xs text-slate-600 hover:text-slate-800 bg-slate-100 rounded border border-slate-200">
+          Fechar
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Modal: Importação em Massa (Excel / CSV / TXT) -->
+  <div id="massModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 hidden flex items-center justify-center p-3 overflow-y-auto no-print">
+    <div class="bg-white rounded-xl max-w-2xl w-full p-4 sm:p-5 shadow-xl border border-slate-200 relative my-4 text-xs">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-200">
+        <div class="flex items-center gap-2">
+          <i class="fa-solid fa-table text-indigo-600 text-sm"></i>
+          <h3 class="font-bold text-slate-900 text-sm">Importação de Vendas em Massa</h3>
+        </div>
+        <button id="btnCloseMassModal" class="text-slate-400 hover:text-slate-600 p-1">
+          <i class="fa-solid fa-xmark text-sm"></i>
+        </button>
+      </div>
+
+      <p class="text-[11px] text-slate-500 my-2">
+        Cole linhas copiadas do Excel / Google Sheets ou carregue um arquivo .CSV / .TXT com as 6 colunas:<br>
+        <span class="font-mono text-slate-700 bg-slate-100 px-1 py-0.5 rounded">Contrato | Data | Cliente | Plano | 1ª Mensalidade | Comissão</span>
+      </p>
+
+      <div class="flex items-center gap-2 my-2">
+        <label class="px-2.5 py-1 text-[11px] bg-slate-100 hover:bg-slate-200 rounded border border-slate-300 cursor-pointer font-medium text-slate-700">
+          Selecionar Arquivo .CSV / .TXT
+          <input type="file" id="csvFileInput" accept=".csv, .txt" class="hidden">
+        </label>
+      </div>
+
+      <textarea id="massTextInput" rows="6" placeholder="Cole aqui seus dados no formato:&#10;CTR-101	10/05/2026	João da Silva	Nacional	189,90	90,00&#10;CTR-102	11/05/2026	Maria Souza	Regional	119,90	55,00"
+        class="w-full p-2.5 font-mono text-[11px] rounded-lg border border-slate-300 focus:outline-none focus:border-indigo-600"></textarea>
+
+      <div id="massFeedback" class="mt-2 text-[11px] text-slate-600">0 linhas identificadas</div>
+
+      <div class="flex items-center justify-end gap-2 pt-3 border-t border-slate-200 mt-3">
+        <button id="btnCancelMass" class="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded border border-slate-200">
+          Cancelar
+        </button>
+        <button id="btnConfirmMass" disabled class="px-4 py-1.5 text-xs bg-indigo-600 disabled:bg-slate-300 disabled:cursor-not-allowed hover:bg-indigo-700 text-white rounded font-medium transition-colors">
+          Importar Vendas
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Confirmação de Restauração de Backup -->
+  <div id="restoreModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 hidden flex items-center justify-center p-3 no-print">
+    <div class="bg-white rounded-xl max-w-md w-full p-4 sm:p-5 shadow-xl border border-slate-200 relative text-xs space-y-3">
+      <div class="flex items-center gap-2 text-indigo-600 font-bold text-sm">
+        <i class="fa-solid fa-file-import text-base"></i>
+        <span>Restaurar Backup do Histórico</span>
+      </div>
+
+      <p class="text-slate-600 text-xs">
+        Identificamos <strong id="restoreCountBadge" class="text-slate-900">0</strong> vendas neste arquivo de backup. Como deseja carregar?
+      </p>
+
+      <div class="space-y-2 pt-1">
+        <button id="btnRestoreReplace" class="w-full p-2.5 rounded-lg border border-indigo-200 bg-indigo-50/50 hover:bg-indigo-50 text-indigo-900 text-left transition-colors">
+          <div class="font-semibold text-xs flex items-center gap-1.5">
+            <i class="fa-solid fa-rotate text-indigo-600"></i>
+            Substituir todos os dados atuais
+          </div>
+          <div class="text-[11px] text-slate-500 mt-0.5">Apaga os registros da tela e carrega exatamente este backup.</div>
+        </button>
+
+        <button id="btnRestoreMerge" class="w-full p-2.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-800 text-left transition-colors">
+          <div class="font-semibold text-xs flex items-center gap-1.5">
+            <i class="fa-solid fa-code-merge text-slate-600"></i>
+            Mesclar com dados atuais
+          </div>
+          <div class="text-[11px] text-slate-500 mt-0.5">Mantém as vendas da tela e adiciona as vendas do backup sem duplicar contratos iguais.</div>
+        </button>
+      </div>
+
+      <div class="flex justify-end pt-2 border-t border-slate-100">
+        <button id="btnCancelRestore" class="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded border border-slate-200">
+          Cancelar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Confirmação de Início de Novo Mês -->
+  <div id="resetMonthModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 hidden flex items-center justify-center p-3 no-print">
+    <div class="bg-white rounded-xl max-w-sm w-full p-4 sm:p-5 shadow-xl border border-slate-200 relative text-xs space-y-3">
+      <div class="flex items-center gap-2 text-rose-600 font-bold text-sm">
+        <i class="fa-solid fa-triangle-exclamation text-base"></i>
+        <span>Iniciar Novo Mês</span>
+      </div>
+
+      <p class="text-slate-600 text-xs">
+        Deseja limpar todos os registros do mês atual para começar um novo período?
+      </p>
+
+      <div class="bg-amber-50 border border-amber-200 text-amber-800 p-2.5 rounded-lg text-[11px] space-y-1">
+        <div class="font-semibold flex items-center gap-1">
+          <i class="fa-solid fa-lightbulb"></i> Recomendação:
+        </div>
+        <div>
+          Faça o download do backup antes de zerar para guardar o histórico do mês que se encerrou.
+        </div>
+      </div>
+
+      <div class="flex flex-col gap-2 pt-2 border-t border-slate-100">
+        <button id="btnConfirmResetWithBackup" class="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded font-medium text-xs flex items-center justify-center gap-1.5 transition-colors">
+          <i class="fa-solid fa-download"></i>
+          Baixar Backup e Limpar Agora
+        </button>
+        <button id="btnConfirmResetOnly" class="w-full py-2 bg-rose-600 hover:bg-rose-700 text-white rounded font-medium text-xs flex items-center justify-center gap-1.5 transition-colors">
+          <i class="fa-solid fa-trash"></i>
+          Limpar sem baixar backup
+        </button>
+        <button id="btnCancelReset" class="w-full py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded border border-slate-200">
+          Cancelar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const STORAGE_KEY = 'vendas_comissoes_db';
+    let sales = [];
+    let parsedBatch = [];
+    let pendingRestoreData = null;
+
+    // Progressive Bonus Rules
+    const BONUS_TIERS = [
+      { min: 1,  max: 20,       bonus: 0,    label: "De 1 a 20 vendas: Sem bônus" },
+      { min: 21, max: 25,       bonus: 350,  label: "De 21 a 25 vendas: Bônus de R$ 350,00" },
+      { min: 26, max: 30,       bonus: 500,  label: "De 26 a 30 vendas: Bônus de R$ 500,00" },
+      { min: 31, max: 40,       bonus: 700,  label: "De 31 a 40 vendas: Bônus de R$ 700,00" },
+      { min: 41, max: 50,       bonus: 1000, label: "De 41 a 50 vendas: Bônus de R$ 1.000,00" },
+      { min: 51, max: 60,       bonus: 1500, label: "De 51 a 60 vendas: Bônus de R$ 1.500,00" },
+      { min: 61, max: Infinity, bonus: 2500, label: "A partir de 61 vendas: Bônus de R$ 2.500,00" }
+    ];
+
+    function showToast(msg, type = 'success') {
+      const toast = document.getElementById('toastNotification');
+      const text = document.getElementById('toastMessage');
+      const icon = document.getElementById('toastIcon');
+      text.innerText = msg;
+
+      if (type === 'error') {
+        toast.className = "fixed top-4 right-4 z-50 transform transition-all duration-200 translate-y-0 opacity-100 flex items-center gap-2.5 px-3.5 py-2.5 rounded-lg shadow-md border text-xs font-medium bg-rose-50 border-rose-200 text-rose-800";
+        icon.className = "fa-solid fa-circle-exclamation text-rose-600 text-sm";
+      } else {
+        toast.className = "fixed top-4 right-4 z-50 transform transition-all duration-200 translate-y-0 opacity-100 flex items-center gap-2.5 px-3.5 py-2.5 rounded-lg shadow-md border text-xs font-medium bg-emerald-50 border-emerald-200 text-emerald-800";
+        icon.className = "fa-solid fa-circle-check text-emerald-600 text-sm";
+      }
+
+      setTimeout(() => {
+        toast.className = "fixed top-4 right-4 z-50 transform transition-all duration-200 translate-y-[-140%] opacity-0 pointer-events-none flex items-center gap-2.5 px-3.5 py-2.5 rounded-lg shadow-md border text-xs font-medium";
+      }, 3200);
+    }
+
+    function formatBRL(val) {
+      return (Number(val) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    }
+
+    function formatDate(str) {
+      if (!str) return '-';
+      const p = str.split('-');
+      return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : str;
+    }
+
+    function escapeHtml(t) {
+      if (!t) return '';
+      return String(t).replace(/[&<>"']/g, m => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#039;' })[m]);
+    }
+
+    function calculateBonus(count) {
+      if (count === 0) return { bonus: 0, label: "Nenhuma venda cadastrada" };
+      for (const tier of BONUS_TIERS) {
+        if (count >= tier.min && count <= tier.max) {
+          return { bonus: tier.bonus, label: tier.label, min: tier.min, max: tier.max };
+        }
+      }
+      return { bonus: 0, label: "Sem bônus" };
+    }
+
+    function loadData() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        sales = raw ? JSON.parse(raw) : [];
+      } catch (e) {
+        sales = [];
+      }
+    }
+
+    function saveData() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(sales));
+    }
+
+    // Refresh KPI Stats and Visual Progression
+    function updateDashboard() {
+      const count = sales.length;
+      const totalFees = sales.reduce((acc, c) => acc + (parseFloat(c.fee) || 0), 0);
+      const totalCommission = sales.reduce((acc, c) => acc + (parseFloat(c.commission) || 0), 0);
+      const bonusInfo = calculateBonus(count);
+      const grandTotal = totalCommission + bonusInfo.bonus;
+
+      document.getElementById('statTotalCount').innerText = count;
+      document.getElementById('statTotalFees').innerText = formatBRL(totalFees);
+      document.getElementById('statRawCommission').innerText = formatBRL(totalCommission);
+      document.getElementById('statBonusAmount').innerText = formatBRL(bonusInfo.bonus);
+      document.getElementById('statTotalPayout').innerText = formatBRL(grandTotal);
+
+      document.getElementById('statBonusLabel').innerText = bonusInfo.label;
+      const nextGoalEl = document.getElementById('statNextGoal');
+      const progressBar = document.getElementById('bonusProgressBar');
+
+      let pct = 0;
+      if (count < 21) {
+        nextGoalEl.innerText = `Faltam ${21 - count} vendas para a 1ª faixa (+R$ 350,00)`;
+        pct = (count / 21) * 33;
+      } else if (count < 26) {
+        nextGoalEl.innerText = `Faltam ${26 - count} vendas para o bônus de R$ 500,00`;
+        pct = 33 + ((count - 20) / 5) * 15;
+      } else if (count < 31) {
+        nextGoalEl.innerText = `Faltam ${31 - count} vendas para o bônus de R$ 700,00`;
+        pct = 48 + ((count - 25) / 5) * 15;
+      } else if (count < 41) {
+        nextGoalEl.innerText = `Faltam ${41 - count} vendas para o bônus de R$ 1.000,00`;
+        pct = 63 + ((count - 30) / 10) * 15;
+      } else if (count < 51) {
+        nextGoalEl.innerText = `Faltam ${51 - count} vendas para o bônus de R$ 1.500,00`;
+        pct = 78 + ((count - 40) / 10) * 11;
+      } else if (count < 61) {
+        nextGoalEl.innerText = `Faltam ${61 - count} vendas para o bônus de R$ 2.500,00`;
+        pct = 89 + ((count - 50) / 10) * 10;
+      } else {
+        nextGoalEl.innerText = `Meta máxima atingida (+R$ 2.500,00)!`;
+        pct = 100;
+      }
+
+      progressBar.style.width = `${Math.min(100, Math.max(0, pct))}%`;
+
+      renderMainTable();
+    }
+
+    function renderMainTable() {
+      const search = (document.getElementById('searchInput').value || '').toLowerCase().trim();
+      const tbody = document.getElementById('salesTableBody');
+      const empty = document.getElementById('tableEmptyState');
+
+      const filtered = sales.filter(s =>
+        (s.contract || '').toLowerCase().includes(search) ||
+        (s.client || '').toLowerCase().includes(search)
+      );
+
+      tbody.innerHTML = '';
+      if (filtered.length === 0) {
+        empty.classList.remove('hidden');
+      } else {
+        empty.classList.add('hidden');
+        filtered.forEach(s => {
+          const tr = document.createElement('tr');
+          tr.className = "hover:bg-slate-50 transition-colors";
+          tr.innerHTML = `
+            <td class="py-2 px-3 font-mono font-medium text-slate-800">${escapeHtml(s.contract)}</td>
+            <td class="py-2 px-3 text-slate-600">${formatDate(s.date)}</td>
+            <td class="py-2 px-3 text-slate-700">${escapeHtml(s.client)}</td>
+            <td class="py-2 px-3"><span class="px-1.5 py-0.5 rounded text-[10px] ${s.plan === 'Nacional' ? 'bg-blue-50 text-blue-700 font-medium' : 'bg-emerald-50 text-emerald-700 font-medium'}">${s.plan}</span></td>
+            <td class="py-2 px-3 text-right font-mono text-slate-600">${formatBRL(s.fee)}</td>
+            <td class="py-2 px-3 text-right font-mono font-semibold text-slate-900">${formatBRL(s.commission)}</td>
+            <td class="py-2 px-2 text-center no-print">
+              <button onclick="deleteSale('${s.id}')" class="text-slate-400 hover:text-rose-600 p-1 rounded transition-colors" title="Excluir">
+                <i class="fa-solid fa-trash-can text-xs"></i>
+              </button>
+            </td>
+          `;
+          tbody.appendChild(tr);
+        });
+      }
+    }
+
+    window.deleteSale = function(id) {
+      sales = sales.filter(s => s.id !== id);
+      saveData();
+      updateDashboard();
+      showToast('Venda removida.');
+    };
+
+    // Form Submit Single Sale
+    document.getElementById('saleForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      const contract = document.getElementById('inputContract').value.trim();
+      const date = document.getElementById('inputDate').value;
+      const client = document.getElementById('inputClient').value.trim();
+      const plan = document.getElementById('inputPlan').value;
+      const fee = parseFloat(document.getElementById('inputFee').value);
+      const commission = parseFloat(document.getElementById('inputCommission').value);
+
+      if (!contract || !date || !client || isNaN(fee) || isNaN(commission)) {
+        showToast('Preencha todos os campos.', 'error');
+        return;
+      }
+
+      sales.unshift({
+        id: 's_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+        contract, date, client, plan, fee, commission
+      });
+
+      saveData();
+      updateDashboard();
+      this.reset();
+      document.getElementById('inputDate').valueAsDate = new Date();
+      document.getElementById('inputContract').focus();
+      showToast('Venda adicionada e salva!');
+    });
+
+    document.getElementById('searchInput').addEventListener('input', renderMainTable);
+
+    // OPEN FINAL REPORT: COMPACT, DENSE, MULTI-PAGE PRINT CAPABLE
+    function openReport() {
+      const count = sales.length;
+      const totalFees = sales.reduce((a, c) => a + (parseFloat(c.fee) || 0), 0);
+      const totalCommissions = sales.reduce((a, c) => a + (parseFloat(c.commission) || 0), 0);
+      const bonusInfo = calculateBonus(count);
+      const grandTotal = totalCommissions + bonusInfo.bonus;
+
+      const now = new Date();
+      document.getElementById('repIssuedDate').innerText = `Emitido em ${now.toLocaleDateString('pt-BR')} às ${now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+
+      // Render dense rows
+      const tbody = document.getElementById('repTableBody');
+      tbody.innerHTML = '';
+
+      if (count === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="py-4 text-center text-slate-400">Nenhuma venda registrada.</td></tr>`;
+      } else {
+        sales.forEach((s, idx) => {
+          const tr = document.createElement('tr');
+          tr.className = "border-b border-slate-100 hover:bg-slate-50";
+          tr.innerHTML = `
+            <td class="text-center font-mono text-slate-400">${idx + 1}</td>
+            <td class="font-mono font-medium text-slate-900">${escapeHtml(s.contract)}</td>
+            <td class="text-slate-600">${formatDate(s.date)}</td>
+            <td class="text-slate-800">${escapeHtml(s.client)}</td>
+            <td class="text-slate-600">${s.plan}</td>
+            <td class="text-right font-mono text-slate-700">${formatBRL(s.fee)}</td>
+            <td class="text-right font-mono font-medium text-slate-900">${formatBRL(s.commission)}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+      }
+
+      // Compact summary values
+      document.getElementById('repSummaryCount').innerText = `${count} venda(s)`;
+      document.getElementById('repSummaryFees').innerText = formatBRL(totalFees);
+      document.getElementById('repSummaryCommissions').innerText = formatBRL(totalCommissions);
+      document.getElementById('repSummaryBonus').innerText = `+ ${formatBRL(bonusInfo.bonus)}`;
+      document.getElementById('repSummaryBonusDesc').innerText = `Regra aplicada: ${bonusInfo.label}`;
+      document.getElementById('repSummaryGrandTotal').innerText = formatBRL(grandTotal);
+
+      document.getElementById('reportModal').classList.remove('hidden');
+    }
+
+    function closeReport() {
+      document.getElementById('reportModal').classList.add('hidden');
+    }
+
+    document.getElementById('btnOpenReport').addEventListener('click', openReport);
+    document.getElementById('btnCloseReport').addEventListener('click', closeReport);
+    document.getElementById('btnCloseReportSecondary').addEventListener('click', closeReport);
+    document.getElementById('btnPrintReport').addEventListener('click', () => window.print());
+
+    // OPEN OPERATIONAL REPORT (SALES ONLY - MULTI-PAGE PRINT CAPABLE)
+    function openOperationalReport() {
+      const count = sales.length;
+      const countNac = sales.filter(s => s.plan === 'Nacional').length;
+      const countReg = sales.filter(s => s.plan === 'Regional').length;
+
+      const now = new Date();
+      document.getElementById('opIssuedDate').innerText = `Emitido em ${now.toLocaleDateString('pt-BR')} às ${now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+
+      const tbody = document.getElementById('opTableBody');
+      tbody.innerHTML = '';
+
+      if (count === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" class="py-4 text-center text-slate-400">Nenhuma venda registrada.</td></tr>`;
+      } else {
+        sales.forEach((s, idx) => {
+          const tr = document.createElement('tr');
+          tr.className = "border-b border-slate-100 hover:bg-slate-50";
+          tr.innerHTML = `
+            <td class="text-center font-mono text-slate-400">${idx + 1}</td>
+            <td class="font-mono font-medium text-slate-900">${escapeHtml(s.contract)}</td>
+            <td class="text-slate-600">${formatDate(s.date)}</td>
+            <td class="text-slate-800">${escapeHtml(s.client)}</td>
+            <td class="text-slate-600">
+              <span class="px-1.5 py-0.5 rounded text-[10px] ${s.plan === 'Nacional' ? 'bg-blue-50 text-blue-700' : 'bg-emerald-50 text-emerald-700'}">${s.plan}</span>
+            </td>
+            <td class="text-right font-mono text-slate-700">${formatBRL(s.fee)}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+      }
+
+      document.getElementById('opSummaryCount').innerText = `${count} contrato(s)`;
+      document.getElementById('opSummaryNac').innerText = `${countNac}`;
+      document.getElementById('opSummaryReg').innerText = `${countReg}`;
+
+      document.getElementById('operationalReportModal').classList.remove('hidden');
+    }
+
+    function closeOperationalReport() {
+      document.getElementById('operationalReportModal').classList.add('hidden');
+    }
+
+    document.getElementById('btnOpenOperationalReport').addEventListener('click', openOperationalReport);
+    document.getElementById('btnCloseOperationalReport').addEventListener('click', closeOperationalReport);
+    document.getElementById('btnCloseOperationalReportSecondary').addEventListener('click', closeOperationalReport);
+    document.getElementById('btnPrintOperationalReport').addEventListener('click', () => window.print());
+
+    const massModal = document.getElementById('massModal');
+    const massTextInput = document.getElementById('massTextInput');
+    const btnConfirmMass = document.getElementById('btnConfirmMass');
+    const massFeedback = document.getElementById('massFeedback');
+
+    function openMassModal() {
+      massModal.classList.remove('hidden');
+      parseMass();
+    }
+    function closeMassModal() {
+      massModal.classList.add('hidden');
+    }
+
+    document.getElementById('btnOpenMassModal').addEventListener('click', openMassModal);
+    document.getElementById('btnCloseMassModal').addEventListener('click', closeMassModal);
+    document.getElementById('btnCancelMass').addEventListener('click', closeMassModal);
+
+    function cleanNum(val) {
+      if (!val) return NaN;
+      let s = val.toString().replace(/R\$/gi, '').replace(/\s/g, '').trim();
+      if (s.includes('.') && s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
+      else if (s.includes(',')) s = s.replace(',', '.');
+      return parseFloat(s);
+    }
+
+    function parseDateFlexible(d) {
+      if (!d) return '';
+      const s = d.trim();
+      const br = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+      if (br) return `${br[3]}-${br[2].padStart(2, '0')}-${br[1].padStart(2, '0')}`;
+      return s;
+    }
+
+    function parseMass() {
+      const text = massTextInput.value.trim();
+      if (!text) {
+        massFeedback.innerText = '0 linhas identificadas';
+        btnConfirmMass.disabled = true;
+        parsedBatch = [];
+        return;
+      }
+
+      const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
+      const valid = [];
+
+      lines.forEach((line, i) => {
+        let cols = line.includes('\t') ? line.split('\t') :
+                   line.includes(';') ? line.split(';') :
+                   line.includes('|') ? line.split('|') : line.split(',');
+
+        cols = cols.map(c => c.trim());
+        const first = (cols[0] || '').toLowerCase();
+        if (first.includes('contrato') || first.includes('contract')) return;
+
+        if (cols.length >= 6) {
+          const contract = cols[0];
+          const date = parseDateFlexible(cols[1]);
+          const client = cols[2];
+          const plan = cols[3].toLowerCase().includes('reg') ? 'Regional' : 'Nacional';
+          const fee = cleanNum(cols[4]);
+          const commission = cleanNum(cols[5]);
+
+          if (contract && date && client && !isNaN(fee) && !isNaN(commission)) {
+            valid.push({
+              id: 'm_' + Date.now() + '_' + i,
+              contract, date, client, plan, fee, commission
+            });
+          }
+        }
+      });
+
+      parsedBatch = valid;
+      massFeedback.innerHTML = `<strong>${valid.length}</strong> vendas válidas encontradas de ${lines.length} linha(s).`;
+      btnConfirmMass.disabled = valid.length === 0;
+    }
+
+    massTextInput.addEventListener('input', parseMass);
+
+    document.getElementById('csvFileInput').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const r = new FileReader();
+      r.onload = (evt) => {
+        massTextInput.value = evt.target.result;
+        parseMass();
+      };
+      r.readAsText(file);
+    });
+
+    btnConfirmMass.addEventListener('click', () => {
+      if (parsedBatch.length === 0) return;
+      sales = [...parsedBatch, ...sales];
+      saveData();
+      updateDashboard();
+      const count = parsedBatch.length;
+      massTextInput.value = '';
+      parsedBatch = [];
+      closeMassModal();
+      showToast(`${count} vendas importadas com sucesso!`);
+    });
+
+    // Backup Menu Dropdown handling
+    const btnToggleBackupMenu = document.getElementById('btnToggleBackupMenu');
+    const backupDropdownMenu = document.getElementById('backupDropdownMenu');
+
+    btnToggleBackupMenu.addEventListener('click', (e) => {
+      e.stopPropagation();
+      backupDropdownMenu.classList.toggle('hidden');
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!backupDropdownMenu.contains(e.target) && !btnToggleBackupMenu.contains(e.target)) {
+        backupDropdownMenu.classList.add('hidden');
+      }
+    });
+
+    // Download Backup JSON
+    function triggerDownloadJSON() {
+      if (sales.length === 0) {
+        showToast('Nenhuma venda para exportar.', 'error');
+        return false;
+      }
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(sales, null, 2));
+      const downloadAnchor = document.createElement('a');
+      const today = new Date().toISOString().slice(0, 10);
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", `backup_vendas_${today}.json`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+      showToast('Backup JSON exportado com sucesso!');
+      return true;
+    }
+
+    document.getElementById('btnDownloadBackupJSON').addEventListener('click', () => {
+      backupDropdownMenu.classList.add('hidden');
+      triggerDownloadJSON();
+    });
+
+    // Export CSV (Excel compatible with semicolon and BOM)
+    document.getElementById('btnExportCSV').addEventListener('click', () => {
+      backupDropdownMenu.classList.add('hidden');
+      if (sales.length === 0) {
+        showToast('Nenhuma venda para exportar.', 'error');
+        return;
+      }
+
+      const headers = ["Contrato", "Data", "Cliente", "Plano", "Primeira Mensalidade", "Comissao"];
+      const rows = sales.map(s => [
+        `"${(s.contract || '').replace(/"/g, '""')}"`,
+        `"${formatDate(s.date)}"`,
+        `"${(s.client || '').replace(/"/g, '""')}"`,
+        `"${s.plan}"`,
+        `"${(Number(s.fee) || 0).toFixed(2).replace('.', ',')}"`,
+        `"${(Number(s.commission) || 0).toFixed(2).replace('.', ',')}"`
+      ]);
+
+      const csvContent = "\uFEFF" + [headers.join(";"), ...rows.map(e => e.join(";"))].join("\r\n");
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const downloadAnchor = document.createElement('a');
+      const today = new Date().toISOString().slice(0, 10);
+      downloadAnchor.href = url;
+      downloadAnchor.download = `vendas_mes_${today}.csv`;
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+      URL.revokeObjectURL(url);
+      showToast('Planilha CSV gerada com sucesso!');
+    });
+
+    // Restore Backup from File
+    const restoreFileInput = document.getElementById('restoreFileInput');
+    const restoreModal = document.getElementById('restoreModal');
+    const restoreCountBadge = document.getElementById('restoreCountBadge');
+
+    restoreFileInput.addEventListener('change', (e) => {
+      backupDropdownMenu.classList.add('hidden');
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        try {
+          const parsed = JSON.parse(evt.target.result);
+          if (!Array.isArray(parsed)) throw new Error('Formato inválido');
+
+          pendingRestoreData = parsed.filter(item => item && item.contract && item.client);
+          if (pendingRestoreData.length === 0) {
+            showToast('Nenhuma venda válida encontrada no arquivo.', 'error');
+            return;
+          }
+
+          restoreCountBadge.innerText = pendingRestoreData.length;
+          restoreModal.classList.remove('hidden');
+        } catch (err) {
+          showToast('Arquivo de backup inválido ou corrompido.', 'error');
+        }
+      };
+      reader.readAsText(file);
+      restoreFileInput.value = '';
+    });
+
+    document.getElementById('btnCancelRestore').addEventListener('click', () => {
+      pendingRestoreData = null;
+      restoreModal.classList.add('hidden');
+    });
+
+    document.getElementById('btnRestoreReplace').addEventListener('click', () => {
+      if (!pendingRestoreData) return;
+      sales = [...pendingRestoreData];
+      saveData();
+      updateDashboard();
+      restoreModal.classList.add('hidden');
+      showToast(`Backup restaurado! ${sales.length} vendas ativas.`);
+      pendingRestoreData = null;
+    });
+
+    document.getElementById('btnRestoreMerge').addEventListener('click', () => {
+      if (!pendingRestoreData) return;
+      const existingContracts = new Set(sales.map(s => String(s.contract).toLowerCase()));
+      let added = 0;
+
+      pendingRestoreData.forEach(item => {
+        if (!existingContracts.has(String(item.contract).toLowerCase())) {
+          sales.push({ ...item, id: 'rest_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4) });
+          existingContracts.add(String(item.contract).toLowerCase());
+          added++;
+        }
+      });
+
+      saveData();
+      updateDashboard();
+      restoreModal.classList.add('hidden');
+      showToast(`Mesclado: +${added} vendas inseridas sem duplicar.`);
+      pendingRestoreData = null;
+    });
+
+    // Reset Month Handling
+    const resetMonthModal = document.getElementById('resetMonthModal');
+    document.getElementById('btnResetMonth').addEventListener('click', () => {
+      backupDropdownMenu.classList.add('hidden');
+      if (sales.length === 0) {
+        showToast('Não há vendas no mês para zerar.', 'error');
+        return;
+      }
+      resetMonthModal.classList.remove('hidden');
+    });
+
+    document.getElementById('btnCancelReset').addEventListener('click', () => {
+      resetMonthModal.classList.add('hidden');
+    });
+
+    document.getElementById('btnConfirmResetWithBackup').addEventListener('click', () => {
+      triggerDownloadJSON();
+      sales = [];
+      saveData();
+      updateDashboard();
+      resetMonthModal.classList.add('hidden');
+      showToast('Backup realizado e novo mês iniciado!');
+    });
+
+    document.getElementById('btnConfirmResetOnly').addEventListener('click', () => {
+      sales = [];
+      saveData();
+      updateDashboard();
+      resetMonthModal.classList.add('hidden');
+      showToast('Novo mês iniciado. Todos os dados foram limpos.');
+    });
+
+    // Initial Startup
+    window.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('inputDate').valueAsDate = new Date();
+      loadData();
+      updateDashboard();
+    });
+  </script>
+</body>
+</html>
